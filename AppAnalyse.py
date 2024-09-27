@@ -77,7 +77,6 @@ def apply_price_tranches(df, geometrie_type):
     return df
 
 # Appliquer des filtres en fonction des sélections utilisateur
-# Appliquer des filtres en fonction des sélections utilisateur
 def apply_filters(df, marque_filter, geometrie_type, indices, mutuelle_filter, exclude_antireflets):
     # Filtrer par Geometrie
     if 'Geometrie' in df.columns:
@@ -207,9 +206,9 @@ if uploaded_file:
     geometrie_filter = st.selectbox("Filtrer par type de Geometrie", ("Tous", "Unifocal", "Progressif", "Bifocal", "Mi-Distance", "Trifocal"))
     indice_filter = st.multiselect("Choisissez les indices à inclure", options=["1500", "1600", "1670", "1740", "1590"], default=["1500"])
     
-    # Liste des mutuelles disponibles (les colonnes commencent par "PV_")
+    # Liste des mutuelles 
     mutuelles_disponibles = [col for col in df.columns if col.startswith("PV_")]
-    mutuelles_disponibles.insert(0, "Tout")  # Ajouter l'option "Tout" pour inclure toutes les mutuelles
+    mutuelles_disponibles.insert(0, "Tout")  
 
     mutuelle_filter = st.selectbox("Choisissez une mutuelle", options=mutuelles_disponibles)
     
