@@ -1,3 +1,4 @@
+#Library
 import streamlit as st
 from pyspark.sql import SparkSession
 from pyspark.sql.functions import when, col, regexp_replace, row_number
@@ -8,7 +9,7 @@ import seaborn as sns
 import pandas as pd
 import numpy as np
 
-# Initialiser Spark
+# Initialisation Spark
 spark = SparkSession.builder.appName("Grilles tarifaires").getOrCreate()
 
 # Charger les données depuis le fichier téléchargé avec encodage UTF-8
@@ -28,17 +29,17 @@ def clean_column_names(df):
         df = df.withColumnRenamed(col_name, clean_name)
     return df
 
-# Fonction pour nettoyer les colonnes numériques et monétaires
+# Fonction pour nettoyer les colonnes numériques 
 def clean_numeric_and_monetary_columns(df):
     monetary_columns = [col_name for col_name in df.columns if col_name.startswith("Prix") or col_name.startswith("PV")]
 
     # Nettoyer les colonnes monétaires
     for column in monetary_columns:
-        df = df.withColumn(column, regexp_replace(col(column), "[^0-9.,-]", ""))  # Garder chiffres, points, virgules, et signes négatifs
+        df = df.withColumn(column, regexp_replace(col(column), "[^0-9.,-]", ""))  # Ici garder chiffres, points, virgules, et signes négatifs
         df = df.withColumn(column, regexp_replace(col(column), ",", "."))  # Convertir les virgules en points
         df = df.withColumn(column, col(column).cast("float"))  # Convertir en float
 
-    # Imputer les valeurs manquantes par la médiane pour les colonnes monétaires
+    # Imputer les valeurs manquantes par la médiane(plus fiable que la moyenne) pour les colonnes monétaires
     for column in monetary_columns:
         valid_values_count = df.filter(col(column).isNotNull()).count()
         if valid_values_count > 0:
@@ -76,7 +77,7 @@ def apply_price_tranches(df, geometrie_type):
             df = df.withColumn(f"Tranche_{column}", Tranche_prix_prog(column))
     return df
 
-# Appliquer des filtres en fonction des sélections utilisateur
+# Appliquer des filtres en fonction des sélections par l'utilisateur
 def apply_filters(df, marque_filter, geometrie_type, indices, mutuelle_filter, exclude_antireflets):
     # Filtrer par Geometrie
     if 'Geometrie' in df.columns:
@@ -95,14 +96,14 @@ def apply_filters(df, marque_filter, geometrie_type, indices, mutuelle_filter, e
 
     # Filtrer par la colonne de mutuelle sélectionnée
     if mutuelle_filter != "Tout":
-        # Vérifier si la colonne de la mutuelle sélectionnée existe dans le DataFrame
+        # Vérifier si la colonne de la mutuelle sélectionnée existe dans notr data(importer)
         if mutuelle_filter in df.columns:
             df = df.filter(df[mutuelle_filter].isNotNull())
         else:
             st.warning(f"La colonne {mutuelle_filter} n'existe pas dans le fichier.")
     else:
-        # Si l'utilisateur choisit "Tout", inclure toutes les mutuelles
-        mutuelle_columns = [col_name for col_name in df.columns if col_name.startswith("PV_")]
+        # Si l'utilisateur choisit "Tout", ce veut dire d'inclure toutes les mutuelles
+        mutuelle_columns = [col_name for col_name in df.columns if col_name.startswith("PV_") and col_name.endswith("_Precal")]
         if mutuelle_columns:
             condition = None
             for col_name in mutuelle_columns:
@@ -112,11 +113,29 @@ def apply_filters(df, marque_filter, geometrie_type, indices, mutuelle_filter, e
                     condition |= df[col_name].isNotNull()
             df = df.filter(condition)
 
-    # Exclure certains types d'antireflets
+
+    # Exclure certains types d'antireflets (pas necessaire)
     if exclude_antireflets and 'Antireflets' in df.columns:
         df = df.filter(~(col("Antireflets").contains("Durci")) & ~(col("Antireflets").contains("Non")))
 
     return df
+
+# Fonction pour afficher les top N 'Nom_Verre' avec leurs 'Marques' en fonction du 'Prix_Achat'
+def plot_top_n_nom_verre(df, top_n):
+    pd_df = df.toPandas()  # Convertir en DataFrame Pandas pour manipulation
+    # Calculer la moyenne des prix d'achat par 'Nom_Verre' et 'Marque'
+    top_nom_verre = pd_df.groupby(['Nom_Verre', 'Marque'])['Prix_Achat'].mean().reset_index()
+    # Trier par 'Prix_Achat' décroissant et sélectionner les top N
+    top_nom_verre = top_nom_verre.sort_values(by='Prix_Achat', ascending=False).head(top_n)
+    
+    plt.figure(figsize=(12, 8))
+    sns.barplot(data=top_nom_verre, y='Nom_Verre', x='Prix_Achat', hue='Marque', dodge=False)
+    plt.title(f'Top {top_n} Nom_Verre par Marque (Prix Achat Moyen)')
+    plt.xlabel('Prix Achat Moyen (€)')
+    plt.ylabel('Nom du Verre')
+    plt.legend(title='Marque', bbox_to_anchor=(1.05, 1), loc='upper left')
+    plt.tight_layout()
+    st.pyplot(plt)
 
 
 # Fonction pour visualiser un histogramme
@@ -206,9 +225,9 @@ if uploaded_file:
     geometrie_filter = st.selectbox("Filtrer par type de Geometrie", ("Tous", "Unifocal", "Progressif", "Bifocal", "Mi-Distance", "Trifocal"))
     indice_filter = st.multiselect("Choisissez les indices à inclure", options=["1500", "1600", "1670", "1740", "1590"], default=["1500"])
     
-    # Liste des mutuelles 
+    # Liste des mutuelles disponibles (les colonnes commencent par "PV_")
     mutuelles_disponibles = [col for col in df.columns if col.startswith("PV_")]
-    mutuelles_disponibles.insert(0, "Tout")  
+    mutuelles_disponibles.insert(0, "Tout")  # "Tout" c'est pour inclure toutes les mutuelles
 
     mutuelle_filter = st.selectbox("Choisissez une mutuelle", options=mutuelles_disponibles)
     
@@ -218,6 +237,16 @@ if uploaded_file:
     final_df = apply_filters(df, marque_filter, geometrie_filter, indice_filter, mutuelle_filter, exclude_antireflets)
 
     
+    # Saisie du nombre de top à afficher
+    st.subheader("Visualisation des Top verriers")
+    top_n = st.number_input("Choisissez le nombre de Top à afficher", min_value=1, max_value=100, value=10, step=1)
+
+    if st.button(f"Afficher les Top {top_n}"):
+        if 'Nom_Verre' in final_df.columns and 'Marque' in final_df.columns:
+            plot_top_n_nom_verre(final_df, top_n)
+        else:
+            st.warning("Les colonnes 'Nom_verre' ou 'Marque' ne sont pas disponibles dans le fichier.")
+
     # Afficher le résultat final et les analyses
     if final_df.count() > 0:
         st.write(final_df.toPandas())
